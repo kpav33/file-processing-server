@@ -25,9 +25,11 @@ interface FileRequest extends Request {
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    // origin: process.env.FRONTEND_URL,
+    origin: "*",
     methods: ["GET", "POST"],
-    credentials: true,
+    // credentials: true,
+    credentials: false,
   })
 );
 
