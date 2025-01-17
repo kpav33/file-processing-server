@@ -99,6 +99,87 @@ app.post(
   })
 );
 
+// Decompress endpoint
+app.get(
+  "/api/decompress",
+  asyncHandler(async (req: Request, res: Response) => {
+    const filename = req.query.filename as string;
+
+    if (!filename) {
+      res.status(400).json({ message: "No filename provided" });
+      return;
+    }
+
+    try {
+      const file = await prisma.file.findFirst({
+        where: { name: filename },
+      });
+
+      if (!file) {
+        res.status(404).json({ message: "File not found" });
+        return;
+      }
+
+      const securedContent = Buffer.from(file.data);
+      const compressedContent = securedContent.subarray(
+        PREFIX_BYTES,
+        securedContent.length - SUFFIX_BYTES
+      );
+
+      const decompressedChunks: Buffer[] = [];
+      const decompressor = createGunzip();
+
+      decompressor.on("data", (chunk) => {
+        decompressedChunks.push(Buffer.from(chunk));
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        decompressor.on("end", () => resolve());
+        decompressor.on("error", reject);
+        decompressor.end(compressedContent);
+      });
+
+      const decompressedContent = Buffer.concat(decompressedChunks);
+
+      res.setHeader("Content-Type", file.mimeType);
+      res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+      res.setHeader("Content-Length", decompressedContent.length.toString());
+      res.send(decompressedContent);
+    } catch (error) {
+      console.error("Error decompressing file:", error);
+      res.status(500).json({
+        message: `Error decompressing file: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      });
+    }
+  })
+);
+
+// Get file list endpoint
+app.get(
+  "/api/files",
+  asyncHandler(async (_req: Request, res: Response) => {
+    try {
+      const files = await prisma.file.findMany({
+        select: {
+          id: true,
+          name: true,
+          mimeType: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+      res.json(files);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      res.status(500).json({ message: "Error fetching files" });
+    }
+  })
+);
+
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error(err.stack);
